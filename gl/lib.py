@@ -9,6 +9,8 @@ from collections import namedtuple
 # Vertex3Type = numpy.dtype([('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
 # Vertex2Type = numpy.dtype([('x', 'f4'), ('y', 'f4')])
 
+
+
 class V3(object):
   def __init__(self, x, y = None, z = None):
     if (type(x) == numpy.matrix):
@@ -34,6 +36,10 @@ class V2(object):
 
 # V2 = namedtuple('Point2', ['x', 'y'])
 # V3 = namedtuple('Point3', ['x', 'y', 'z'])
+
+def reflect(I, N):
+  return norm(sub(I, mul(N,2 * dot(I,N))))
+
 
 def sum(v0, v1):
   """

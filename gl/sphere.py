@@ -2,11 +2,20 @@
 from lib import *
 import intersect
 
+class Material(object):
+  def __init__(self, diffuse=(0,0,0), albedo=(1, 0,1), spec=0, fuzzy=None):
+    self.diffuse = diffuse
+    self.albedo = albedo
+    self.spec = spec
+    self.fuzzy = fuzzy
+
+
 class Sphere(object):
-  def __init__(self, center, radius, colour):
+  def __init__(self, center, radius, material, colour=(0,0,0)):
     self.center = center
     self.radius = radius
     self.colour = colour
+    self.material = material
 
   def ray_intersect(self, orig, direction):
     L = sub(self.center, orig)
