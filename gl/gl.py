@@ -27,10 +27,12 @@ class Render(object):
         self.width = width
         self.height = height
         self.framebuffer = []
-        self.clearColor = color(0,0,0)
+        self.framebuffer_int = []
+        self.clearColor = (0,0,0)
         self.glCreateWindow()
         self.glViewport(vpw, vph, vpx, vpy)
         self.drawColor = color(0,0,0)
+        self.drawColor_int = (0,0,0)
         self.glClear()
         self.scene = []
 
@@ -40,9 +42,14 @@ class Render(object):
     def glCreateWindow(self):
         print(self.framebuffer)
         self.framebuffer = [
-            [self.clearColor for x in range(self.width)]
+            [color(0,125,0) for x in range(self.width)]
              for y in range(self.height)
         ]
+        self.framebuffer_int = [
+            [(0,0,0) for x in range(self.width)]
+             for y in range(self.height)
+        ]
+
         #pprint.pprint(self.framebuffer)
     
     def glViewport(self, width, height, x, y):
@@ -54,7 +61,7 @@ class Render(object):
 
     def glClear(self):
         self.framebuffer = [
-            [self.clearColor for x in range(self.width)]
+            [color(0,0,0) for x in range(self.width)]
              for y in range(self.height)
         ]
 
@@ -63,9 +70,11 @@ class Render(object):
 
     def glColor(self, r,g,b):
         self.drawColor = color(int(r*255),int(g*255),int(b*255))
+        self.drawColor_int = (r,g,b)
 
     def point(self,x,y):
         self.framebuffer[x][y] = self.drawColor
+        self.framebuffer_int[x][y] = self.drawColor_int
 
     def glVertex(self, x,y): 
         xW = int(((x+1)*(self.ViewportWidth/2))+self.xNormalized)
@@ -120,8 +129,8 @@ class Render(object):
                 f.write(self.framebuffer[y][x])
         f.close()
     
-    def point(self,x,y):
-        self.framebuffer[x][y] = self.drawColor
+    # def point(self,x,y):
+    #     self.framebuffer[x][y] = self.drawColor
 
     def scene_intersect(self, orig, direction):
         zbuffer = float('inf')
@@ -136,68 +145,101 @@ class Render(object):
                     return True, material, intersect
         return False, None, intersect
         
-    def cast_ray(self, orig, direction, recursion = 0):
+    def cast_ray(self, orig, direction, recursion = 0, removed_channel=-999, pos=(0,0)):
         collision, material , impact = self.scene_intersect(orig, direction)
-        
+
         if collision or recursion >= MAX_RECURSION_DEPTH:
-            light_dir = norm(sub(self.light.position, impact.point))
-            light_distance = length(sub(self.light.position, impact.point))
+            colour = (material.diffuse[0], material.diffuse[1], material.diffuse[2])
+            for light in self.lights:
+                light_dir = norm(sub(light.position, impact.point))
+                light_distance = length(sub(light.position, impact.point))
 
-            offset_normal = mul(impact.normal, 1.1)
-            if dot(light_dir, impact.normal) < 0:
-                shadow_orig = sub(impact.point, offset_normal)
-            else:
-                shadow_orig = sum(impact.point, offset_normal)
-            # print(impact.normal)
+                offset_normal = mul(impact.normal, 1.1)
+                if dot(light_dir, impact.normal) < 0:
+                    shadow_orig = sub(impact.point, offset_normal)
+                else:
+                    shadow_orig = sum(impact.point, offset_normal)
+                # print(impact.normal)
 
-            shadow_intersect, shadow_material, shadow_intersect_obj = self.scene_intersect(shadow_orig, light_dir)
-            shadow_intensity = 0
-            if shadow_intersect:
-                #in shadow
-                shadow_intensity = 0.9
+                shadow_intersect, shadow_material, shadow_intersect_obj = self.scene_intersect(shadow_orig, light_dir)
+                shadow_intensity = 0
+                if shadow_intersect and light.is_anaglyph == False:
+                    #in shadow
+                    shadow_intensity = 0.2
 
-            intensity = max(0,dot(light_dir, impact.normal)) * (1-shadow_intensity)
+                intensity = max(0,dot(light_dir, impact.normal)) * (1-shadow_intensity)
 
-            reflection = reflect(light_dir, impact.normal)
-            specular_intensity = self.light.intensity * (max(0, dot(reflection,direction))**material.spec)
+                reflection = reflect(light_dir, impact.normal)
+                specular_intensity = light.intensity * (max(0, dot(reflection,direction))**material.spec)
 
-            # if material.albedo[2] > 0:
-            #     reflected_colour = 
-            albedo = material.albedo
-            # print(material, material.diffuse)
-            colour = (material.diffuse[0]*intensity*albedo[0], material.diffuse[1]*intensity*albedo[0], material.diffuse[2]*intensity*albedo[0])
-            specular = (self.light.color[0] * specular_intensity * material.albedo[1],self.light.color[1] * specular_intensity * material.albedo[1] ,self.light.color[2] * specular_intensity * material.albedo[1] )
-            # reflected = (reflected_colour[0] * material_albedo[2]
-            colour = (min(colour[0]+specular[0], 1),min(colour[1]+specular[1], 1),min(colour[2]+specular[2], 1))
-            # print (colour)
-            if material.fuzzy:
-                enfuzzisize = True if (random.random() < material.fuzzy) else False
-                if enfuzzisize:
-                    factor  = material.fuzzy + (material.fuzzy*0.1 if (random.random() < 0.5) else -material.fuzzy*0.1)
-                    colour = (min(colour[0]*factor, 1), min(colour[1]*factor, 1),min(colour[2]*factor, 1))
-            self.glColor(*colour)
+                # if material.albedo[2] > 0:
+                #     reflected_colour = 
+                albedo = material.albedo
+                # print(material, material.diffuse)
+                colour = (colour[0]*intensity*albedo[0], colour[1]*intensity*albedo[0], colour[2]*intensity*albedo[0])
+                specular = (light.color[0] * specular_intensity * material.albedo[1],light.color[1] * specular_intensity * material.albedo[1] ,light.color[2] * specular_intensity * material.albedo[1] )
+                # reflected = (reflected_colour[0] * material_albedo[2]
+                position = self.framebuffer_int[pos[0]][pos[1]]
+                # rr = random.randint(0, 50)
+                # if rr == 50:
+                #     print(position)
+                #     print(self.drawColor_int)
+
+                ## Color channel selection depending on render iteration.
+                red =  min(colour[0]+specular[0], 1) if (removed_channel == -1 or removed_channel is None) else 0
+                red = min(1, red+position[0])
+                green = min(colour[1]+specular[1], 1) if removed_channel is None else 0
+                blue = min(colour[2]+specular[2], 1)  if (removed_channel == 0 or removed_channel is None) else 0
+                blue = min(1, blue+position[2])
+
+                colour = (red, green, blue)
+                # print (colour)
+                if material.fuzzy:
+                    enfuzzisize = True if (random.random() < material.fuzzy) else False
+                    if enfuzzisize:
+                        factor  = material.fuzzy + (material.fuzzy*0.1 if (random.random() < 0.5) else -material.fuzzy*0.1)
+                        colour = (min(colour[0]*factor, 1), min(colour[1]*factor, 1), min(colour[2]*factor, 1))
+                self.glColor(*colour)
+            return True
         else:
             # print("i didn't hit")
-            self.glColor(0,0,0)
+            self.glColor(*self.clearColor)
+            return False
 
     def render(self):
         fov = pi/2
-        for y in range(self.height):
-            for x in range(self.width):
-                flip = 1
-                if flip >= 1:
-                    i =  (2*(x + 0.5)/self.width - 1)*math.tan(fov/2)*self.width/self.height
-                    j = -(2*(y + 0.5)/self.height - 1)*math.tan(fov/2)
+        # for y in range(self.height):
+        #         for x in range(self.width):
+        #             flip = 1
+        #             if flip >= 1:
+        #                 i =  (2*(x + 0.5)/self.width - 1)*math.tan(fov/2)*self.width/self.height
+        #                 j = -(2*(y + 0.5)/self.height - 1)*math.tan(fov/2)
 
-                    direction = norm(V3(i, j, -1))
-                    self.cast_ray(V3(0,0,0), direction)
-                    self.point(x,y)
+        #                 direction = norm(V3(i, j, -1))
+        #                 hit = self.cast_ray(V3(0,0,0), direction, removed_channel=None, pos=(x,y))
+        #                 if hit:
+        #                     self.point(x,y) 
+
+        ## Render twice, once without red channel and once without blue, with a slightly different angle.
+        for angle in range(-1,1):
+            for y in range(self.height):
+                for x in range(self.width):
+                    flip = 1
+                    if flip >= 1:
+                        i =  (2*(x + 0.5)/self.width - 1)*math.tan(fov/2)*self.width/self.height
+                        j = -(2*(y + 0.5)/self.height - 1)*math.tan(fov/2)
+
+                        direction = norm(V3(i, j, -1))
+                        hit = self.cast_ray(V3(angle/5,0,0), direction, removed_channel=angle, pos=(x,y))
+                        if hit:
+                            self.point(x,y)
+
 
 ##Please for the love of God don't use non-4 multiples for your dimensions unless you want to absoultely do you know what to your you know what.
 
-bitmap = Render(160,160,160,160, 0, 0)
+bitmap = Render(600,600,600,600, 0, 0)
 ivory = Material(diffuse=(1,1,1), albedo=(0.3,  0.7, 1), spec=50)
-rubber = Material(diffuse=(0.3, 0, 0), albedo=(0.9,  0.1, 0), spec=10)
+rubber = Material(diffuse=(1,1,1), albedo=(1,  1, 0), spec=50)
 bllackpearl = Material(diffuse=(0.1, 0.1, 0.1), albedo=(0.1,  0.9, 1), spec=50)
 carrot = Material(diffuse=(0.7, 0, 0), albedo=(0.5,  0.5, 0), spec=50)
 sapphire = Material(diffuse=(0, 0, 1), albedo=(0.7,  0.3, 1), spec=0.5)
@@ -206,11 +248,26 @@ fuzzytest = Material(diffuse=(210/255, 105/255, 30/255), albedo=(0.9,0.1, 0), sp
 whitecloth =  Material(diffuse=(1,1,1), albedo=(1,0.1, 0), spec=10, fuzzy=0.8)
 
 
-bitmap.light = Light(
+bitmap.lights = [
+    Light(
     color=(1,1,1),
-    position=V3(2,-10,3),
-    intensity = 1000
-)
+    position=V3(0,0,-1),
+    intensity = 1000,
+    is_anaglyph=False
+    ),
+    # Light(
+    # color=(1,1,1),
+    # position=V3(2,0,-3),
+    # intensity = 1000,
+    # is_anaglyph=True
+    # ),
+    # Light(
+    # color=(1,1,1),
+    # position=V3(-2,-0,-3),
+    # intensity = 1000,
+    # is_anaglyph=True
+    # )
+]
 
 
 ##Snowman
@@ -221,16 +278,16 @@ bitmap.light = Light(
 #     Sphere(V3(0.3, -1.75, -8), 0.15, rubber), # mouth dots lower right
 #     Sphere(V3(-0.3, -1.75, -8), 0.15, rubber), # mouth dots lower left
 #     Sphere(V3(0, -2.5, -8), 0.3, carrot), # nose
-#     Sphere(V3(-0.45, -2.9, -8), 0.08, fuzzytest), # eye glare left
-#     Sphere(V3(0.75, -2.9, -8), 0.08, fuzzytest), # eye glare right
+#     Sphere(V3(-0.45, -2.9, -8), 0.08, rubber), # eye glare left
+#     Sphere(V3(0.75, -2.9, -8), 0.08, rubber), # eye glare right
 #     Sphere(V3(-0.6, -3, -8), 0.2, bllackpearl), # eye left
 #     Sphere(V3(0.6, -3, -8), 0.2, bllackpearl), # eye right
 #     Sphere(V3(0, 4, -8), 0.5, bllackpearl), # buttons lowest
 #     Sphere(V3(0, 2, -8), 0.5, bllackpearl), # buttons mid
 #     Sphere(V3(0, 0, -8), 0.5, bllackpearl), # buttons highest
-#     Sphere(V3(0, -2.5, -8), 1.5, fuzzytest), # tiny ball
-#     Sphere(V3(0, 0, -8), 2, fuzzytest), # middle ball
-#     Sphere(V3(0, 3, -8), 3, fuzzytest), # fat ball
+#     Sphere(V3(0, -2.5, -8), 1.5, rubber), # tiny ball
+#     Sphere(V3(0, 0, -8), 2, rubber), # middle ball
+#     Sphere(V3(0, 3, -8), 3, rubber), # fat ball
 # ]
 
 # bitmap.scene = []
@@ -243,7 +300,7 @@ bitmap.light = Light(
 #         i += 1
 #         # print(x_,y_,float(z/10))
 #         # print((1-abs(x_),1-abs(float(z/4)),1-abs(y_)))
-#         bitmap.scene.append(Sphere(V3(x_,y_,-z), 0.5, ruby if x < 0  else sapphire))
+#         bitmap.scene.append(Sphere(V3(x_,y_,-z), 0.5, ivory if x < 0  else rubber))
 
 # bitmap.scene = [
 #     Sphere(V3(0, 0, -8), 0.5, (1,1,1)),
@@ -253,19 +310,19 @@ bitmap.light = Light(
 
 
 
-## Bears
+# Bears
 bitmap.scene = [
-    Sphere(V3(-3.2,2.2,-5), 0.5, whitecloth), # left bear, left leg
-    Sphere(V3(-1.8,2.2,-5), 0.5, whitecloth), # left bear, right leg
-    Sphere(V3(-3.8,-0.2,-5), 0.5, whitecloth), # left bear, left arm
-    Sphere(V3(-1.2,-0.2,-5), 0.5, whitecloth), # left bear, right arm
-    Sphere(V3(-2.4,-1.4,-4), 0.2, whitecloth), # left bear, left ear
-    Sphere(V3(-1.6,-1.4,-4), 0.2, whitecloth), # left bear, right ear
+    Sphere(V3(-3.2,2.2,-5), 0.5, rubber), # left bear, left leg
+    Sphere(V3(-1.8,2.2,-5), 0.5, rubber), # left bear, right leg
+    Sphere(V3(-3.8,-0.2,-5), 0.5, rubber), # left bear, left arm
+    Sphere(V3(-1.2,-0.2,-5), 0.5, rubber), # left bear, right arm
+    Sphere(V3(-2.4,-1.4,-4), 0.2, rubber), # left bear, left ear
+    Sphere(V3(-1.6,-1.4,-4), 0.2, rubber), # left bear, right ear
     Sphere(V3(-2.3,-0.9,-4), 0.1, sapphire), # left bear, left eye
     Sphere(V3(-1.8,-0.9,-4), 0.1, sapphire), # left bear, right eye
     Sphere(V3(-2.1,-0.6,-4), 0.1, sapphire), # left bear, nose
-    Sphere(V3(-2.4,-1.0,-5), 0.8, whitecloth), # left bear, head
-    Sphere(V3(-3.0,1.0,-7), 2.0, whitecloth), # left bear, torso
+    Sphere(V3(-2.4,-1.0,-5), 0.8, rubber), # left bear, head
+    Sphere(V3(-3.0,1.0,-7), 2.0, rubber), # left bear, torso
 
 ]
 bitmap.render()
